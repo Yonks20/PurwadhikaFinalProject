@@ -15,6 +15,11 @@ st.set_page_config(
 DATA_PATH = Path(__file__).with_name("bank-additional-full.csv")
 OVERALL_RATE = 11.27
 MONTH_ORDER = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+PRODUCTION_FEATURES = [
+    "age", "job", "marital", "education", "default", "housing", "loan", "contact",
+    "month", "day_of_week", "campaign", "pdays", "previous", "poutcome",
+    "emp.var.rate", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed",
+]
 
 
 def inject_styles() -> None:
@@ -51,6 +56,16 @@ def inject_styles() -> None:
             }
             .focus-card h3 { color: #102a43; margin: 0 0 .3rem; }
             .focus-card p { color: #40566b; margin: .18rem 0; }
+            [data-testid="stMain"] h2, [data-testid="stMain"] h3 {
+                color: #102a43 !important;
+            }
+            [data-testid="stMain"] [data-testid="stCaptionContainer"],
+            [data-testid="stMain"] [data-testid="stCaptionContainer"] * {
+                color: #40566b !important;
+                opacity: 1 !important;
+                font-weight: 600 !important;
+            }
+            .bank-hero h1 { color: white !important; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -63,6 +78,11 @@ def load_data(path: Path) -> pd.DataFrame:
     data = pd.read_csv(path, sep=";")
     data["subscribed"] = data["y"].eq("yes")
     return data
+
+
+def prepare_prediction_export(data: pd.DataFrame) -> pd.DataFrame:
+    """Return the exact raw feature set used as X by the prediction pipeline."""
+    return data.loc[:, PRODUCTION_FEATURES].copy()
 
 
 def subscription_by(data: pd.DataFrame, column: str) -> pd.DataFrame:
@@ -81,10 +101,21 @@ def clean_chart(fig):
         template="plotly_white",
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
-        font_color="#102a43",
-        legend_title_text="",
-        xaxis=dict(gridcolor="#e8eef2", zerolinecolor="#e8eef2"),
-        yaxis=dict(gridcolor="#e8eef2", zerolinecolor="#e8eef2"),
+        font=dict(color="#102a43", size=13),
+        title=dict(font=dict(color="#102a43", size=18)),
+        legend=dict(font=dict(color="#102a43", size=12), title_text=""),
+        xaxis=dict(
+            gridcolor="#e8eef2",
+            zerolinecolor="#e8eef2",
+            tickfont=dict(color="#102a43"),
+            title_font=dict(color="#102a43"),
+        ),
+        yaxis=dict(
+            gridcolor="#e8eef2",
+            zerolinecolor="#e8eef2",
+            tickfont=dict(color="#102a43"),
+            title_font=dict(color="#102a43"),
+        ),
     )
     return fig
 
@@ -169,6 +200,20 @@ def main() -> None:
     if filtered.empty:
         st.warning("Tidak ada observasi untuk kombinasi filter ini. Ubah filter di sidebar.")
         st.stop()
+
+    prediction_export = prepare_prediction_export(filtered)
+    st.sidebar.divider()
+    st.sidebar.markdown("### Data export")
+    st.sidebar.caption(
+        f"Download {len(prediction_export):,} final prediction-input records from the current filters."
+    )
+    st.sidebar.download_button(
+        "Download prediction CSV",
+        data=prediction_export.to_csv(index=False).encode("utf-8"),
+        file_name="bank_term_deposit_prediction_input.csv",
+        mime="text/csv",
+        key="sidebar_prediction_export",
+    )
 
     st.markdown(
         """
@@ -255,7 +300,7 @@ def main() -> None:
             )
             fig.update_traces(textinfo="percent+label")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=60, b=10))
-            st.plotly_chart(clean_chart(fig), width="stretch")
+            st.plotly_chart(clean_chart(fig), use_container_width=True)
         with right:
             month_order = ["mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
             month_summary = subscription_by(filtered, "month")
@@ -272,7 +317,7 @@ def main() -> None:
             fig.add_hline(y=OVERALL_RATE, line_dash="dash", line_color="#e76f51")
             fig.update_traces(line_color="#264653", marker_color="#2a9d8f")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=60, b=10), yaxis_title="Subscription Rate (%)")
-            st.plotly_chart(clean_chart(fig), width="stretch")
+            st.plotly_chart(clean_chart(fig), use_container_width=True)
 
         st.info(
             "Interpretasi: visual ini menunjukkan association pada data historis, bukan bukti bahwa "
@@ -282,29 +327,29 @@ def main() -> None:
     with campaign_tab:
         left, right = st.columns(2)
         with left:
-            st.plotly_chart(rate_bar(filtered, "contact", "Subscription rate by contact channel"), width="stretch")
+            st.plotly_chart(rate_bar(filtered, "contact", "Subscription rate by contact channel"), use_container_width=True)
         with right:
-            st.plotly_chart(rate_bar(filtered, "poutcome", "Subscription rate by previous campaign outcome"), width="stretch")
+            st.plotly_chart(rate_bar(filtered, "poutcome", "Subscription rate by previous campaign outcome"), use_container_width=True)
 
         campaign_bins = [0, 1, 2, 3, 5, 10, float("inf")]
         campaign_labels = ["1", "2", "3", "4-5", "6-10", ">10"]
         campaign_group = filtered.copy()
-        campaign_group["Current campaign contacts"] = pd.cut(
+        campaign_group["Kontak kampanye saat ini"] = pd.cut(
             campaign_group["campaign"], bins=campaign_bins, labels=campaign_labels
         )
         fig = rate_bar(
             campaign_group,
-            "Current campaign contacts",
+            "Kontak kampanye saat ini",
             "Subscription rate by current campaign intensity",
             height=430,
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         month_volume = (
             filtered["month"]
             .value_counts()
             .rename_axis("month")
-            .reset_index(name="Campaign contacts")
+            .reset_index(name="Kontak kampanye")
         )
         month_volume["month"] = pd.Categorical(
             month_volume["month"], categories=MONTH_ORDER, ordered=True
@@ -313,19 +358,19 @@ def main() -> None:
         fig = px.bar(
             month_volume,
             x="month",
-            y="Campaign contacts",
-            text="Campaign contacts",
+            y="Kontak kampanye",
+            text="Kontak kampanye",
             color_discrete_sequence=["#177e89"],
             title="Campaign contact volume by month",
         )
         fig.update_traces(texttemplate="%{text:,}", textposition="outside")
-        fig.update_layout(height=370, margin=dict(l=10, r=10, t=60, b=10), yaxis_title="Campaign contacts")
-        st.plotly_chart(clean_chart(fig), width="stretch")
+        fig.update_layout(height=370, margin=dict(l=10, r=10, t=60, b=10), yaxis_title="Kontak kampanye")
+        st.plotly_chart(clean_chart(fig), use_container_width=True)
 
     with segment_tab:
         left, right = st.columns(2)
         with left:
-            st.plotly_chart(rate_bar(filtered, "job", "Subscription rate by job", height=500), width="stretch")
+            st.plotly_chart(rate_bar(filtered, "job", "Subscription rate by job", height=500), use_container_width=True)
         with right:
             age_group = filtered.copy()
             age_group["Age group"] = pd.cut(
@@ -333,25 +378,25 @@ def main() -> None:
                 bins=[0, 29, 39, 49, 59, 69, 120],
                 labels=["≤29", "30-39", "40-49", "50-59", "60-69", "70+"],
             )
-            st.plotly_chart(rate_bar(age_group, "Age group", "Subscription rate by age group", height=500), width="stretch")
+            st.plotly_chart(rate_bar(age_group, "Age group", "Subscription rate by age group", height=500), use_container_width=True)
 
         st.subheader("Top opportunity segments")
         st.caption(
-            "Historical job segments ranked by subscription rate, with a minimum of 100 campaign contacts so very small groups do not dominate the view."
+            "Segmen pekerjaan historis diurutkan berdasarkan tingkat berlangganan, dengan minimal 100 kontak agar kelompok sangat kecil tidak mendominasi tampilan."
         )
         segment_summary = subscription_by(filtered, "job")
         segment_summary = (
             segment_summary.loc[segment_summary["Observations"] >= 100]
             .head(8)
-            .rename(columns={"job": "Job", "Observations": "Campaign contacts", "Subscriptions": "Subscriptions"})
+            .rename(columns={"job": "Pekerjaan", "Observations": "Kontak kampanye", "Subscriptions": "Berlangganan"})
         )
         st.dataframe(
-            segment_summary[["Job", "Campaign contacts", "Subscriptions", "Subscription Rate (%)"]],
+            segment_summary[["Pekerjaan", "Kontak kampanye", "Berlangganan", "Subscription Rate (%)"]],
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
             column_config={
-                "Campaign contacts": st.column_config.NumberColumn(format="%,d"),
-                "Subscriptions": st.column_config.NumberColumn(format="%,d"),
+                "Kontak kampanye": st.column_config.NumberColumn(format="%,d"),
+                "Berlangganan": st.column_config.NumberColumn(format="%,d"),
                 "Subscription Rate (%)": st.column_config.NumberColumn(format="%.2f%%"),
             },
         )
@@ -362,9 +407,9 @@ def main() -> None:
             "The dashboard reports notebook-validated results. It does not retrain or score clients because no deployed model artifact is included."
         )
         m1, m2, m3 = st.columns(3)
-        m1.metric("Selected model", "Gradient Boosting + ROS")
+        m1.metric("Model terpilih", "Gradient Boosting + ROS")
         m2.metric("5-fold CV AP", "0.4634")
-        m3.metric("Untouched test AP", "0.4810")
+        m3.metric("AP data uji untouched", "0.4810")
 
         model_results = pd.DataFrame(
             {
@@ -385,18 +430,18 @@ def main() -> None:
                 var_name="Metric", value_name="Score"
             )
             fig = px.line(metric_chart, x="Threshold", y="Score", color="Metric", markers=True,
-                          title="Test-set threshold scenarios")
+                          title="Skenario ambang batas data uji")
             fig.update_layout(yaxis_range=[0, 1], height=360, margin=dict(l=10, r=10, t=60, b=10))
-            st.plotly_chart(clean_chart(fig), width="stretch")
+            st.plotly_chart(clean_chart(fig), use_container_width=True)
         with right:
-            st.dataframe(model_results[["Threshold", "Precision", "Recall", "F1-score", "Targeted clients"]], hide_index=True, width="stretch", column_config={
+            st.dataframe(model_results[["Threshold", "Precision", "Recall", "F1-score", "Targeted clients"]], hide_index=True, use_container_width=True, column_config={
                 "Precision": st.column_config.NumberColumn(format="%.3f"),
                 "Recall": st.column_config.NumberColumn(format="%.3f"),
                 "F1-score": st.column_config.NumberColumn(format="%.3f"),
                 "Targeted clients": st.column_config.NumberColumn(format="%,d"),
             })
 
-        st.subheader("What drives the model?")
+        st.subheader("Apa yang paling memengaruhi model?")
         st.caption(
             "Permutation importance measures how much Average Precision falls when a feature is shuffled. Values are from the untouched test-set analysis in the notebook."
         )
@@ -417,14 +462,14 @@ def main() -> None:
         )
         fig.update_traces(texttemplate="%{text:.3f}", textposition="outside")
         fig.update_layout(height=360, margin=dict(l=10, r=35, t=60, b=10))
-        st.plotly_chart(clean_chart(fig), width="stretch")
+        st.plotly_chart(clean_chart(fig), use_container_width=True)
 
         st.subheader("Campaign capacity scenario")
         selected_threshold = st.selectbox(
             "Operating threshold",
             options=[0.50, 0.60],
             format_func=lambda value: f"Threshold {value:.2f}",
-            help="Choose a validated operating scenario from the untouched test-set evaluation.",
+            help="Pilih skenario operasional tervalidasi dari evaluasi data uji untouched.",
         )
         scenario = model_results.loc[model_results["Threshold"] == selected_threshold].iloc[0]
         s1, s2, s3, s4 = st.columns(4)
@@ -433,32 +478,37 @@ def main() -> None:
         s3.metric("Potential unnecessary contacts", f"{int(scenario['False positives']):,}")
         s4.metric("Potential missed subscribers", f"{int(scenario['False negatives']):,}")
         st.caption(
-            f"At threshold {selected_threshold:.2f}, the model prioritizes a more selective list as the threshold rises. "
-            "These are historical test-set outcomes, not guaranteed future results."
+            f"Pada ambang batas {selected_threshold:.2f}, model memprioritaskan daftar yang lebih selektif ketika ambang batas meningkat. "
+            "Hasil ini berasal dari data uji historis, bukan jaminan hasil di masa depan."
         )
 
         st.warning(
-            "`duration` is excluded from production-oriented scoring: it becomes known after a call completes and would leak outcome information. "
-            "Thresholds are operating scenarios, not financially optimized recommendations."
+            "`duration` dikeluarkan dari scoring berorientasi produksi karena baru diketahui setelah panggilan selesai dan dapat menyebabkan kebocoran informasi outcome. "
+            "Ambang batas adalah skenario operasional, bukan rekomendasi yang dioptimalkan secara finansial."
         )
-        with st.expander("How to use this dashboard responsibly"):
+        with st.expander("Cara menggunakan dashboard ini secara tepat"):
             st.markdown(
-                "- Each record is a campaign contact, not a unique customer.\n"
-                "- Charts show historical associations; they do not establish causation.\n"
-                "- `duration` is intentionally excluded from production-oriented scoring because it is known after a call.\n"
-                "- Revalidate model performance before deploying it to a new campaign period."
+                "- Setiap baris adalah satu kontak kampanye, bukan nasabah unik.\n"
+                "- Grafik menunjukkan hubungan historis, bukan sebab-akibat.\n"
+                "- `duration` sengaja dikeluarkan dari scoring karena baru diketahui setelah panggilan berlangsung.\n"
+                "- Validasi ulang performa model sebelum digunakan pada periode kampanye baru."
             )
 
     with data_tab:
         st.subheader("Filtered campaign records")
         visible_columns = [col for col in filtered.columns if col not in ["subscribed"]]
-        st.dataframe(filtered[visible_columns], width="stretch", height=460)
-        csv = filtered[visible_columns].to_csv(index=False).encode("utf-8")
+        st.dataframe(filtered[visible_columns], use_container_width=True, height=460)
+
+        st.caption(
+            "Ekspor prediksi berisi 19 fitur produksi mentah yang digunakan sebagai `X` di notebook. "
+            "`duration` dan target `y` dikeluarkan; feature engineering `pdays` dilakukan di dalam pipeline model."
+        )
         st.download_button(
-            "Download filtered data as CSV",
-            data=csv,
-            file_name="bank_campaign_filtered.csv",
+            "Download prediction CSV",
+            data=prediction_export.to_csv(index=False).encode("utf-8"),
+            file_name="bank_term_deposit_prediction_input.csv",
             mime="text/csv",
+            key="data_tab_prediction_export",
         )
 
         st.subheader("Executive snapshot")

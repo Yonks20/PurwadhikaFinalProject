@@ -1,4 +1,5 @@
 from pathlib import Path
+from html import escape
 
 import pandas as pd
 import plotly.express as px
@@ -48,6 +49,20 @@ def inject_styles() -> None:
             [data-testid="stMetric"] { background: white; border: 1px solid #e4ebf0; border-radius: 14px; padding: .85rem 1rem; }
             [data-testid="stMetricLabel"] { color: #527080; font-size: .82rem; }
             [data-testid="stMetricValue"] { color: #102a43; }
+            .insight-card {
+                min-height: 170px; background: #ffffff; border: 1px solid #e4ebf0;
+                border-radius: 14px; padding: 1rem; box-sizing: border-box;
+            }
+            .insight-card__label {
+                color: #527080; font-size: .78rem; font-weight: 700;
+                letter-spacing: .03em; text-transform: uppercase; margin-bottom: .75rem;
+            }
+            .insight-card__segment { color: #527080; font-size: .86rem; margin-bottom: .15rem; }
+            .insight-card__rate { color: #102a43; font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+            .insight-card__sample {
+                color: #40566b; font-size: .86rem; font-weight: 600; margin-top: .85rem;
+                padding-top: .65rem; border-top: 1px solid #e8eef2;
+            }
             button[kind="secondary"] { border-radius: 9px; border-color: #d7a528; color: #8a6612; }
             .filter-note { color: #b9c9d6; font-size: .82rem; margin: .35rem 0 .75rem; }
             .focus-card {
@@ -157,6 +172,21 @@ def rate_bar(data: pd.DataFrame, category: str, title: str, height: int = 390):
     return clean_chart(fig)
 
 
+def insight_card(label: str, segment: str, rate: float, observations: int) -> None:
+    """Render an insight and its sample size as one visually connected card."""
+    st.markdown(
+        f"""
+        <section class="insight-card">
+            <div class="insight-card__label">{escape(label)}</div>
+            <div class="insight-card__segment">{escape(segment)}</div>
+            <div class="insight-card__rate">{rate:.1f}% conversion</div>
+            <div class="insight-card__sample">Sample size: {observations:,} campaign contacts</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     inject_styles()
 
@@ -246,23 +276,29 @@ def main() -> None:
     outcome_insight = subscription_by(filtered, "poutcome")
     top_outcome = outcome_insight.iloc[0]
 
-    st.subheader("Executive briefing")
+    st.subheader("Key campaign insights")
     insight_1, insight_2, insight_3 = st.columns(3)
     with insight_1:
-        with st.container(border=True):
-            st.caption("HISTORICAL TIMING SIGNAL")
-            st.metric(str(top_month["month"]).upper(), f"{top_month['Subscription Rate (%)']:.1f}% conversion")
-            st.caption(f"Based on {int(top_month['Observations']):,} campaign contacts")
+        insight_card(
+            "Historical timing signal",
+            str(top_month["month"]).upper(),
+            top_month["Subscription Rate (%)"],
+            int(top_month["Observations"]),
+        )
     with insight_2:
-        with st.container(border=True):
-            st.caption("TOP JOB SEGMENT")
-            st.metric(str(top_job["job"]).title(), f"{top_job['Subscription Rate (%)']:.1f}% conversion")
-            st.caption(f"Based on {int(top_job['Observations']):,} campaign contacts")
+        insight_card(
+            "Top job segment",
+            str(top_job["job"]).title(),
+            top_job["Subscription Rate (%)"],
+            int(top_job["Observations"]),
+        )
     with insight_3:
-        with st.container(border=True):
-            st.caption("STRONGEST HISTORY SIGNAL")
-            st.metric(str(top_outcome["poutcome"]).title(), f"{top_outcome['Subscription Rate (%)']:.1f}% conversion")
-            st.caption(f"Based on {int(top_outcome['Observations']):,} campaign contacts")
+        insight_card(
+            "Strongest history signal",
+            str(top_outcome["poutcome"]).title(),
+            top_outcome["Subscription Rate (%)"],
+            int(top_outcome["Observations"]),
+        )
 
     st.markdown(
         f"""
